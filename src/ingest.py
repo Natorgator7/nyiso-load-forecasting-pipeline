@@ -1,9 +1,9 @@
-
 import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import matplotlib.pyplot as plt
+import glob
+
 
 
 #set up logging
@@ -27,16 +27,19 @@ def ingest_csv(path: str, usecols) -> pd.DataFrame:
 
     return df
 
-#read CSVs from NYISO actual load and ASOS temperature
-load = ingest_csv('data/Load_March_8_2025-2026.csv', ['RTD End Time Stamp', 'RTD Actual Load'])
-temp = ingest_csv('data/Temp_March_8_2025-2026.csv', ['valid', 'tmpf'])
+#ingest all load datasets
+load_files = glob.glob('data/Load/*.csv')
+dfs = [ingest_csv(f, ['RTD End Time Stamp', 'RTD Actual Load']) for f in load_files]
+load = pd.concat(dfs, ignore_index=True)
 
+#ingest all temp datasets
+temp = ingest_csv('data/Temp/Temp_March_23_2020-2026.csv', ['valid', 'tmpf'])
 
 #clean for readability
 load.columns = ['date', 'load']
 temp.columns = ['date', 'temperature']
-temp['date'] = pd.to_datetime(temp['date'])
-load['date'] = pd.to_datetime(load['date'])
+temp['date'] = pd.to_datetime(temp['date'], utc = True)
+load['date'] = pd.to_datetime(load['date'], utc = True)
 temp['temperature'] = pd.to_numeric(temp['temperature'], errors='coerce')
 
 load = load.set_index('date')
@@ -44,12 +47,10 @@ temp = temp.set_index('date')
 
 #matching rows
 load_hourly = load.resample("h").mean()
-load_hourly = load_hourly.iloc[:-1]
+#load_hourly = load_hourly.iloc[:-1]
 temp_hourly = temp.resample("h").mean()
 
 df = load_hourly.join(temp_hourly, how="inner")
-
-#plot for visualizing load vs. temperature: df.plot(x='temperature', y='load', kind='scatter')
 
 #log row matching
 logger.info(f"merged_dataset rows={len(df)}")

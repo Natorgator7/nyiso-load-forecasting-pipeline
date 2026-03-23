@@ -2,32 +2,32 @@
 import xgboost as xgb
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_percentage_error
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+
 
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("ingestion")
 
-from ingest import ingest_csv
 
-df = ingest_csv("data/processed/featurized_hourly_load_temp.csv", [
-    'date', 'load', 'temperature','below_55', 'above_55', 'lag_1', 'lag_24', 
-    'lag_168', 'hour_sin', 'hour_cos','dow_sin','dow_cos', 'target', 'target_res'])
+df = pd.read_csv("data/processed/featurized_hourly_load_temp.csv", usecols =[
+    'date', 'target','target_date', 'load', 'temperature','below_55', 'above_55', 'lag_1', 'lag_24', 
+    'lag_168', 'hour_sin', 'hour_cos','dow_sin','dow_cos'])
 
+df["date"] = pd.to_datetime(df["date"])
+df["target_date"] = pd.to_datetime(df["target_date"])
 
+features = ['below_55', 'above_55', 'lag_1', 'lag_24', 
+    'lag_168', 'hour_sin', 'hour_cos','dow_sin','dow_cos']
 
-X = df[['below_55', 'above_55', 'lag_1', 'lag_24', 
-    'lag_168', 'hour_sin', 'hour_cos','dow_sin','dow_cos']]
-y = df['target_res']
+X = df[features]
+y = df['target']
 
 #train model
 X_train, X_test, y_train, y_test = train_test_split(
-    X,y, test_size=0.2, shuffle = False)
+    X,y, test_size=0.3, shuffle = False)
 xgb_train = xgb.DMatrix(X_train, y_train)
 xgb_test = xgb.DMatrix(X_test, y_test)
 
@@ -50,9 +50,14 @@ model = xgb.train(
     early_stopping_rounds=30,
     verbose_eval=False)
 
-predictions = model.predict(xgb_test) + df['lag_24']
+predictions = model.predict(xgb_test)
 logger.info('trained nonlinear regression')
 
 #save results
-pred = pd.DataFrame({'date': df.loc[y_test.index, 'date'], 'predicted_load': predictions})
+pred = pd.DataFrame({
+    "feature_date": df.loc[y_test.index, "date"],
+    "target_date": df.loc[y_test.index, "target_date"],
+    "actual_load": y_test,
+    "predicted_load": predictions
+})
 pred.to_csv('data/processed/XGBoost_predictions.csv', index=False)
